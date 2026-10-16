@@ -52,3 +52,17 @@ SDK 制品来自本机 Maven 仓库 `~/.m2/repository/io/github/bwtrobot/`，cor
 前后端分别完成规格符合性与代码质量审查，随后整体审查通过，无 Critical / Important 遗留问题。前端新增夹具和 fallback 已按字段展开，格式调整后机型 API 的 7 项测试再次通过。
 
 `openspec validate sync-sdk-410-robot-model --strict` 通过，`git diff --check` 通过。本次保留原工作区已有文档修改，所有实现位于 `feature/sync-sdk-410-robot-model` 隔离分支。
+
+
+## IDEA 启动日志诊断补充
+
+用户提供的启动日志来自原工作区 `feature/dev`，classpath 中 core、services、ws 均为 3.3.0；4.1.0 的实现位于隔离分支，尚未合并到原工作区。启动成功不代表已加载本次升级。
+
+使用本地 4.1.0 SDK 和同一组环境凭据进行脱敏只读诊断，令牌和签名仅保留在内存中，日志不输出值。诊断传输使用不跟随重定向的 JDK HTTP 连接；没有修改产品请求协议或原工作区源码。
+
+1. 既有默认服务地址返回 HTTP 200 的令牌响应，字段为 accessToken、refreshToken、needChangePassword，确认 accessToken 非空。
+2. 业务请求携带标准 Authorization 头，机器人列表仍返回 401；重新获取令牌后依旧 401。未观察到重定向。
+3. 仅额外添加服务端源码支持的同值 v-Authorization 头，机器人列表变为 HTTP 200、success=true。该对照说明现有入口存在鉴权头兼容问题；尚不能仅凭客户端证据断定是网关移除了标准头，还是部署中的服务过滤器处理有差异。
+4. 从真实列表取得非空机型编码后，携带上述兼容头调用新增 `/api/open/v1/robot-model`，上游返回 HTTP 500，errcode 为 2001001000，errmsg 为 `{validation.legacy.8e1f6788e588}`。源码语言资源对应“系统异常，请稍后重试”。因此实际机型详情仍未验收成功，需要结合服务端异常日志定位；不能把它归为原先的列表 401。
+
+当前结论：实际只读列表已通过诊断兼容头验证成功；原 BFF 默认传输链路仍存在鉴权头问题，机型详情另有上游 500。修复标准头转发或明确兼容方案后，仍需从实际 BFF 入口重做联调。产品代码未启用临时兼容头，未合并分支，也未下发机器人指令。
