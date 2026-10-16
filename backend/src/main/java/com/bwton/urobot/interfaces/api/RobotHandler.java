@@ -30,6 +30,11 @@ public class RobotHandler {
         this.realtimeService = realtimeService;
     }
 
+    @GetMapping("model")
+    public Mono<Result<Map<String, Object>>> model(@RequestParam(required = false) String modelCode) {
+        return service.getRobotModel(modelCode).map(Result::ok);
+    }
+
     @GetMapping("page")
     public Mono<Result<Page<RobotResponse>>> page(@ModelAttribute PageQuery pageQuery) {
         return service.page(pageQuery).map(Result::ok);

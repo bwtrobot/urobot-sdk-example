@@ -6,6 +6,7 @@ import java.util.Map;
 
 public class RobotResponse extends BaseResponse {
     private String id;
+    private String modelCode;
     private String name;
     private Map<String, Object> map;
     private Map<String, Object> config;
@@ -24,6 +25,7 @@ public class RobotResponse extends BaseResponse {
     public static RobotResponse from(RobotItem item) {
         RobotResponse response = new RobotResponse();
         response.setId(item.id());
+        response.setModelCode(item.modelCode());
         response.setName(item.name());
         response.setMap(item.map());
         response.setConfig(item.config());
@@ -40,6 +42,10 @@ public class RobotResponse extends BaseResponse {
         response.setDeviceTypeDesc(item.deviceTypeDesc());
         return response;
     }
+
+    public String getModelCode() { return modelCode; }
+
+    public void setModelCode(String modelCode) { this.modelCode = modelCode; }
 
     public String getId() {
         return id;

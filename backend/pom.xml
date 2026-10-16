@@ -13,6 +13,7 @@
     <artifactId>backend</artifactId>
 
     <properties>
+        <urobot-sdk.version>4.1.0</urobot-sdk.version>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -35,17 +36,17 @@
         <dependency>
             <groupId>io.github.bwtrobot</groupId>
             <artifactId>urobot-opensdk-core</artifactId>
-            <version>3.3.0</version>
+            <version>${urobot-sdk.version}</version>
         </dependency>
         <dependency>
             <groupId>io.github.bwtrobot</groupId>
             <artifactId>urobot-opensdk-services</artifactId>
-            <version>3.3.0</version>
+            <version>${urobot-sdk.version}</version>
         </dependency>
         <dependency>
             <groupId>io.github.bwtrobot</groupId>
             <artifactId>urobot-opensdk-ws</artifactId>
-            <version>3.3.0</version>
+            <version>${urobot-sdk.version}</version>
         </dependency>
 
         <dependency>

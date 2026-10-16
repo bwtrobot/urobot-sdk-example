@@ -25,6 +25,7 @@ export interface ApiRequestOptions<T> extends Omit<AxiosRequestConfig, 'method' 
   url: string;
   fallbackData: T;
   fallbackReason?: string;
+  rejectBusinessFailure?: boolean;
 }
 
 export interface ApiRequestResult<T> {
@@ -101,11 +102,15 @@ function cloneFallbackData<T>(data: T): T {
 }
 
 export async function apiRequest<T>(options: ApiRequestOptions<T>): Promise<ApiRequestResult<T>> {
-  const { fallbackData, fallbackReason, ...requestConfig } = options;
+  const { fallbackData, fallbackReason, rejectBusinessFailure, ...requestConfig } = options;
   const startTime = performance.now();
 
   try {
     const response = await http.request<ApiResult<T>>(requestConfig);
+    // 按接口显式开启业务失败校验，使失败响应走统一降级与来源日志。
+    if (rejectBusinessFailure && response.data.success === false) {
+      throw new Error(response.data.errmsg || response.data.errcode || '接口返回业务失败');
+    }
     const data = response.data.result;
 
     appendLog({

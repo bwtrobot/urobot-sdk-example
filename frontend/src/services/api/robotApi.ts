@@ -10,6 +10,7 @@ import type {
   NarrationRuntimeInfo,
   PageResult,
   RobotCommand,
+  RobotModel,
   RobotRuntime,
   RobotSummary,
   SegmentMode,
@@ -232,5 +233,41 @@ function fetchTaskResultsBatch(robotId: string, taskIds: string[]) {
     url: `/robot/task-result/${robotId}`,
     params,
     fallbackData: taskIds.map((taskId) => createMockTaskResult(taskId)),
+  });
+}
+
+export async function getRobotModel(modelCode: string): Promise<ApiRequestResult<RobotModel>> {
+  requireText(modelCode, 'modelCode');
+  // 编码原样交给查询参数序列化，保留平台动态机型中的空格与特殊字符。
+  const params = new URLSearchParams({ modelCode });
+  return apiRequest<RobotModel>({
+    method: 'GET',
+    url: '/robot/model',
+    params,
+    rejectBusinessFailure: true,
+    // 降级仅展示演示信息，不构造可被误用为真实模型的资源地址。
+    fallbackData: {
+      id: null,
+      deviceType: null,
+      nameZh: '演示机型（mock）',
+      nameEn: null,
+      modelCode,
+      terminal_type: null,
+      terminal_type_value: null,
+      urdfFileKey: null,
+      urdfMainPath: null,
+      cardPosterFileKey: null,
+      ratioPosterFileKey: null,
+      virtualActionSupported: null,
+      autoChargeMode: null,
+      status: null,
+      enabledTime: null,
+      description: '演示数据，非平台真实机型',
+      createTime: null,
+      updateTime: null,
+      urdf: null,
+      cardPoster: null,
+      ratioPoster: null,
+    },
   });
 }

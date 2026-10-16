@@ -29,6 +29,51 @@ public class RobotService {
         this.uRobotClient = uRobotClient;
     }
 
+    public Mono<Map<String, Object>> getRobotModel(String modelCode) {
+        return Mono.fromSupplier(() -> {
+            // 编码只校验不改写，保留动态机型编码中的空格与特殊字符。
+            requireText(modelCode, "modelCode");
+            GetRobotModelRequest request = GetRobotModelRequest.builder().modelCode(modelCode).build();
+            RobotModel model = uRobotClient.robot().getRobotModel(request).model();
+            // 使用显式 Map 保持详情契约，不受全局蛇形命名策略影响。
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", model.id());
+            result.put("deviceType", model.deviceType());
+            result.put("nameZh", model.nameZh());
+            result.put("nameEn", model.nameEn());
+            result.put("modelCode", model.modelCode());
+            result.put("terminal_type", model.terminalType());
+            result.put("terminal_type_value", model.terminalTypeValue());
+            result.put("urdfFileKey", model.urdfFileKey());
+            result.put("urdfMainPath", model.urdfMainPath());
+            result.put("cardPosterFileKey", model.cardPosterFileKey());
+            result.put("ratioPosterFileKey", model.ratioPosterFileKey());
+            result.put("virtualActionSupported", model.virtualActionSupported());
+            result.put("autoChargeMode", model.autoChargeMode());
+            result.put("status", model.status());
+            result.put("enabledTime", model.enabledTime());
+            result.put("description", model.description());
+            result.put("createTime", model.createTime());
+            result.put("updateTime", model.updateTime());
+            result.put("urdf", robotModelFileToMap(model.urdf()));
+            result.put("cardPoster", robotModelFileToMap(model.cardPoster()));
+            result.put("ratioPoster", robotModelFileToMap(model.ratioPoster()));
+            return result;
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private Map<String, Object> robotModelFileToMap(RobotModelFile file) {
+        // 上游没有文件引用时保留 null，避免生成看似可用的空文件对象。
+        if (file == null) { return null; }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fileId", file.fileId());
+        result.put("fileName", file.fileName());
+        result.put("contentType", file.contentType());
+        result.put("url", file.url());
+        result.put("disposition", file.disposition());
+        return result;
+    }
+
     public Mono<Page<RobotResponse>> page(PageQuery query) {
         return Mono.fromSupplier(() -> {
             ListRobotsRequest request = ListRobotsRequest.builder()

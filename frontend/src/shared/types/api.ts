@@ -44,10 +44,12 @@ export interface RobotSummary {
   status?: string;
   statusValue?: number;
   status_value?: number;
-  terminalType?: string;
-  terminal_type?: string;
-  terminalTypeValue?: number;
-  terminal_type_value?: number;
+  modelCode?: string | null;
+  model_code?: string | null;
+  terminalType?: string | null;
+  terminal_type?: string | null;
+  terminalTypeValue?: number | null;
+  terminal_type_value?: number | null;
   terminalPower?: number;
   terminal_power?: number;
   deviceTypeDesc?: string;
@@ -350,4 +352,36 @@ export interface RealtimeTopicSubscription {
   throttleRate?: number;
   minFps?: number;
   maxFps?: number;
+}
+
+export interface RobotModelFile {
+  fileId: string | null;
+  fileName: string | null;
+  contentType: string | null;
+  url: string | null;
+  disposition: string | null;
+}
+
+export interface RobotModel {
+  id: string | null;
+  deviceType: number | null;
+  nameZh: string | null;
+  nameEn: string | null;
+  modelCode: string | null;
+  terminal_type: string | null;
+  terminal_type_value: number | null;
+  urdfFileKey: string | null;
+  urdfMainPath: string | null;
+  cardPosterFileKey: string | null;
+  ratioPosterFileKey: string | null;
+  virtualActionSupported: boolean | null;
+  autoChargeMode: string | null;
+  status: number | null;
+  enabledTime: string | null;
+  description: string | null;
+  createTime: string | null;
+  updateTime: string | null;
+  urdf: RobotModelFile | null;
+  cardPoster: RobotModelFile | null;
+  ratioPoster: RobotModelFile | null;
 }
