@@ -32,7 +32,8 @@
     "three-mesh-bvh": "^0.9.9",
     "um-3d-tiles-renderer": "^0.4.48",
     "umanager-animation-parser": "^0.0.6",
-    "urdf-loader": "^0.12.7"
+    "urdf-loader": "^0.12.7",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
