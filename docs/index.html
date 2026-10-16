@@ -26,9 +26,22 @@
 <li><a href="#_http_配置">9. HTTP 配置</a></li>
 <li><a href="#_重试策略">10. 重试策略</a></li>
 <li><a href="#_request_和_response">11. Request 和 Response</a></li>
-<li><a href="#_分页">12. 分页</a></li>
+<li><a href="#_分页">12. 分页</a>
+<ul class="sectlevel3">
+<li><a href="#_动态机型查询">12.1. 动态机型查询</a></li>
+</ul>
+</li>
 <li><a href="#_错误处理">13. 错误处理</a></li>
-<li><a href="#_robotclient">14. RobotClient</a></li>
+<li><a href="#_robotclient">14. RobotClient</a>
+<ul class="sectlevel2">
+<li><a href="#_机型详情查询">14.1. 机型详情查询</a>
+<ul class="sectlevel3">
+<li><a href="#_机型详情字段">14.1.1. 机型详情字段</a></li>
+<li><a href="#_机型文件字段">14.1.2. 机型文件字段</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li><a href="#_websocket_实时数据通道">15. WebSocket 实时数据通道</a>
 <ul class="sectlevel2">
 <li><a href="#_前置条件">15.1. 前置条件</a></li>
@@ -50,9 +63,11 @@
 <ul class="sectlevel3">
 <li><a href="#_重连策略">15.6.1. 重连策略</a></li>
 <li><a href="#_被挤占">15.6.2. 被挤占</a></li>
-<li><a href="#_关闭连接">15.6.3. 关闭连接</a></li>
+<li><a href="#_回调线程">15.6.3. 回调线程</a></li>
+<li><a href="#_关闭连接">15.6.4. 关闭连接</a></li>
 </ul>
 </li>
+<li><a href="#_动态机型编码">15.7. 动态机型编码</a></li>
 </ul>
 </li>
 <li><a href="#_mapclient">16. MapClient</a>
@@ -164,7 +179,7 @@
 <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependency&gt;
     &lt;groupId&gt;io.github.bwtrobot&lt;/groupId&gt;
     &lt;artifactId&gt;urobot-opensdk-services&lt;/artifactId&gt;
-    &lt;version&gt;3.2.0&lt;/version&gt;
+    &lt;version&gt;4.1.0&lt;/version&gt;
 &lt;/dependency&gt;</code></pre>
 </div>
 </div>
@@ -176,7 +191,7 @@
 <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependency&gt;
     &lt;groupId&gt;io.github.bwtrobot&lt;/groupId&gt;
     &lt;artifactId&gt;urobot-opensdk-core&lt;/artifactId&gt;
-    &lt;version&gt;3.2.0&lt;/version&gt;
+    &lt;version&gt;4.1.0&lt;/version&gt;
 &lt;/dependency&gt;</code></pre>
 </div>
 </div>
@@ -403,6 +418,12 @@ ListMapsResponse response = client.map().listMaps(request);</code></pre>
 <div class="paragraph">
 <p>自动分页为惰性加载，迭代到下一页时才发起请求。</p>
 </div>
+<div class="sect3">
+<h4 id="_动态机型查询">12.1. 动态机型查询</h4>
+<div class="paragraph">
+<p>机器人列表可使用可选的 <code>modelCode</code> 字符串筛选动态机型，例如 <code>ListRobotsRequest.builder().modelCode("custom_robot").build()</code>。GET 查询发送 <code>modelCode</code>（camelCase）；响应通过 <code>RobotItem.modelCode()</code> 读取 <code>model_code</code>。与旧 <code>terminalType</code> 同时提供时以 <code>modelCode</code> 为准；旧 <code>terminalType</code> 方法保留兼容。动态机型的 <code>terminal_type_value</code> 可能为空；旧服务端缺少 <code>model_code</code> 时 <code>modelCode()</code> 返回空值。无编码的历史记录由服务端按旧枚举映射兼容。</p>
+</div>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -439,7 +460,7 @@ ListMapsResponse response = client.map().listMaps(request);</code></pre>
 <h2 id="_robotclient">14. RobotClient</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p><code>RobotClient</code> 覆盖 5 个机器人接口：</p>
+<p><code>RobotClient</code> 覆盖机器人查询、任务控制和单点导航接口：</p>
 </div>
 <div class="ulist">
 <ul>
@@ -458,7 +479,25 @@ ListMapsResponse response = client.map().listMaps(request);</code></pre>
 <li>
 <p><code>setCallback</code>：设置数据订阅回调。</p>
 </li>
+<li>
+<p><code>navigation</code>：按导航点名称或位姿下发单点导航并等待最终结果。</p>
+</li>
 </ul>
+</div>
+<div class="paragraph">
+<p>单点导航请求支持 <code>pointName</code>（非空时优先按名称处理）和 <code>toward</code>（<code>forward</code> / <code>backward</code>，默认 <code>forward</code>）：</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">NavigationResponse response = client.robot().navigation(NavigationRequest.builder()
+    .robotId("robot-sn")
+    .pointName("F1")
+    .positionX(2.2522).positionY(-0.881949538099388).positionZ(-1.3875)
+    .orientationX(-0.014707664919881869).orientationY(0.7203878073631774)
+    .orientationZ(0.6934150971808892).orientationW(-0.0007711009636985258)
+    .navVoiceControl(false).lookAt(true).toward("forward")
+    .build());</code></pre>
+</div>
 </div>
 <div class="paragraph">
 <p>查询任务结果示例：</p>
@@ -470,6 +509,196 @@ ListMapsResponse response = client.map().listMaps(request);</code></pre>
         .robotId("robot-sn")
         .taskIds(Collections.singletonList("task-id"))
         .build());</code></pre>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_机型详情查询">14.1. 机型详情查询</h3>
+<div class="paragraph">
+<p>从机器人列表的 <code>RobotItem.modelCode()</code> 获取编码后，可查询已启用且未删除的机型主数据及资源引用。使用 Open API 凭证调用 <code>GET /api/open/v1/robot-model</code>，必填查询参数为 <code>modelCode</code>（camelCase）。</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">GetRobotModelResponse response = client.robot().getRobotModel(
+    GetRobotModelRequest.builder().modelCode("Go2").build());
+RobotModel model = response.model();
+if (model.urdf() != null) {
+    String downloadUrl = model.urdf().url();
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>以上类型位于 <code>io.github.bwtrobot.opensdk.services.robot.model</code>。<code>RobotModel</code> 包含标识、设备类型、中英文名称、机型编码、三个文件 key、URDF 主路径、虚拟动作支持、自动充电模式、状态、描述、时间以及 <code>urdf()</code> / <code>cardPoster()</code> / <code>ratioPoster()</code> 文件对象。完整字段以 <code>RobotModelResponse</code> 契约为准，时间使用 ISO 8601 字符串。文件对象提供 <code>fileId()</code>、<code>fileName()</code>、<code>contentType()</code>、<code>url()</code>、<code>disposition()</code>；未配置资源时可为空。</p>
+</div>
+<div class="paragraph">
+<p><code>terminalType()</code> / <code>terminalTypeValue()</code> 保留历史描述及枚举值，动态机型可能为空；业务应优先使用 <code>modelCode()</code>。缺失或空白编码在 SDK 构造请求时被拒绝；机型不可用或文件引用异常沿用服务端业务错误，由 SDK 抛出既有异常。该功能自 <code>4.1.0</code> 提供，服务端也须部署对应开放路由。</p>
+</div>
+<div class="sect3">
+<h4 id="_机型详情字段">14.1.1. 机型详情字段</h4>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 28.5714%;">
+<col style="width: 14.2857%;">
+<col style="width: 57.1429%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">JSON 字段</th>
+<th class="tableblock halign-left valign-top">类型</th>
+<th class="tableblock halign-left valign-top">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>id</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">主键。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>deviceType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>Integer</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">设备类型数值。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nameZh</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">中文名称。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nameEn</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">英文名称。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>modelCode</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">机型编码。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>terminal_type</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">历史终端类型描述，仅可兼容的旧机型有值。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>terminal_type_value</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>Integer</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">历史终端类型枚举值，动态编码无需存在旧枚举。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>urdfFileKey</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">URDF 文件存储 key。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>urdfMainPath</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">URDF 主文件路径。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cardPosterFileKey</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">卡片海报文件 key。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ratioPosterFileKey</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">比例海报文件 key。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>virtualActionSupported</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>Boolean</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">是否支持虚拟动作。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>autoChargeMode</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">自动充电模式。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>status</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>Integer</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">启用状态。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>enabledTime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">启用时间。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>description</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">描述。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>createTime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">创建时间。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>updateTime</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">修改时间。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>urdf</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RobotModelFile</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">URDF 下载/预览引用。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cardPoster</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RobotModelFile</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">卡片海报下载/预览引用。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ratioPoster</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RobotModelFile</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">比例海报下载/预览引用。</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect3">
+<h4 id="_机型文件字段">14.1.2. 机型文件字段</h4>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 28.5714%;">
+<col style="width: 14.2857%;">
+<col style="width: 57.1429%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">JSON 字段</th>
+<th class="tableblock halign-left valign-top">类型</th>
+<th class="tableblock halign-left valign-top">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>fileId</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">文件记录 ID。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>fileName</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">文件名称。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>contentType</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">内容类型。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>url</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">下载地址。</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>disposition</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>String</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">展示方式。</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
 </div>
@@ -506,8 +735,13 @@ ListMapsResponse response = client.map().listMaps(request);</code></pre>
     .endpoint("https://your-server.com")
     .credentialsProvider(StaticCredentialsProvider.create("accessKey", "secretKey"))
     .wsConfiguration(WsConfiguration.builder()
-        .maxReconnectAttempts(5)        // 最大重连次数，默认 3
+        .maxReconnectAttempts(5)        // 最大重连次数，默认 10
         .reconnectInterval(Duration.ofSeconds(10)) // 重连间隔，默认 5 秒
+        .maxBackoff(Duration.ofSeconds(60))         // 最大退避间隔，默认 60 秒
+        .robotOfflineMaxBackoff(Duration.ofMinutes(5)) // 机器人离线最大退避间隔，默认 5 分钟
+        .reconnectForever(false)                    // 是否无限重连，默认 false
+        .connectionStableThreshold(Duration.ofSeconds(60)) // 稳定窗口，默认 60 秒
+        .maxBinaryMessageSize(10 * 1024 * 1024)     // 二进制接收上限，默认 10MB
         .heartbeatInterval(Duration.ofSeconds(30))  // 心跳间隔，默认 30 秒
         .connectTimeout(Duration.ofSeconds(10))     // 连接超时，默认 10 秒
         .build())
@@ -536,6 +770,9 @@ realtime.connect();</code></pre>
 </div>
 <div class="paragraph">
 <p><code>connect()</code> 是同步阻塞方法，成功返回后 WS 连接已建立。连接失败或超时会抛出 <code>ClientException</code>。</p>
+</div>
+<div class="paragraph">
+<p>连接成功后，SDK 会先重放本地已注册的 Topic 订阅，再触发 <code>onConnected</code> 回调，首次连接与重连语义一致。</p>
 </div>
 </div>
 <div class="sect2">
@@ -644,10 +881,19 @@ String status = realtime.taskCache().getStatus(taskId); // PENDING/EXECUTING/FIN
 <div class="sect3">
 <h4 id="_重连策略">15.6.1. 重连策略</h4>
 <div class="paragraph">
-<p>网络异常或心跳超时时，SDK 自动在后台重连。重连流程：等待 <code>reconnectInterval</code> → 重新获取 WsToken → 重连 WS → 自动重订阅所有 Topic。</p>
+<p>网络异常、心跳超时、服务端关闭码 <code>4401</code> / <code>4402</code>，或重新获取 WsToken 时返回机器人离线错误 <code>20002</code> 时，SDK 自动在后台重连。重连流程：按指数退避 + 随机抖动等待 → 重新获取 WsToken → 重连 WS → 自动重订阅所有 Topic。</p>
 </div>
 <div class="paragraph">
-<p>重连次数达到 <code>maxReconnectAttempts</code> 时停止，触发 <code>onDisconnected(EXHAUSTED)</code>。</p>
+<p>机器人离线归因为 <code>ROBOT_OFFLINE</code>，退避上限使用 <code>robotOfflineMaxBackoff</code>；其它网络类断开使用 <code>maxBackoff</code>。</p>
+</div>
+<div class="paragraph">
+<p>如果一次网络断开已触发 <code>onDisconnected(NETWORK_ERROR)</code>，但后续后台重连在获取 WsToken 时发现服务端返回机器人离线错误 <code>20002</code>，SDK 会追加触发一次 <code>onDisconnected(ROBOT_OFFLINE)</code>，用于把当前断因升级为机器人离线。按断开次数统计的调用方需要注意这个行为；按连接状态消费时应以最新一次 <code>reason</code> 为准。</p>
+</div>
+<div class="paragraph">
+<p>连接保持 <code>CONNECTED</code> 达到 <code>connectionStableThreshold</code> 后，SDK 才会清空重连预算；若在稳定窗内再次断开，预算会继续累加，避免 flapping 连接无限翻滚。</p>
+</div>
+<div class="paragraph">
+<p>重连次数达到 <code>maxReconnectAttempts</code> 时停止，触发 <code>onDisconnected(EXHAUSTED)</code>；设置 <code>reconnectForever(true)</code> 时会持续重试，不主动进入 <code>CLOSED</code>。</p>
 </div>
 </div>
 <div class="sect3">
@@ -655,9 +901,18 @@ String status = realtime.taskCache().getStatus(taskId); // PENDING/EXECUTING/FIN
 <div class="paragraph">
 <p>服务端限制每个机器人只允许一个 OpenControl 连接。新连接建立时旧连接被挤占，收到 <code>CLOSE_CONNECT</code> 后触发 <code>onKicked()</code>，<strong>不触发自动重连</strong>。</p>
 </div>
+<div class="paragraph">
+<p>关闭码 <code>4403</code> 的行为与被挤占一致：SDK 不重连，并回调 <code>onKicked()</code> / <code>onDisconnected(KICKED)</code>。</p>
+</div>
 </div>
 <div class="sect3">
-<h4 id="_关闭连接">15.6.3. 关闭连接</h4>
+<h4 id="_回调线程">15.6.3. 回调线程</h4>
+<div class="paragraph">
+<p><code>onTopic</code> / <code>onTaskResult</code> / <code>onConnected</code> / <code>onDisconnected</code> / <code>onKicked</code> 都在 SDK 内部的单线程回调执行器上顺序执行，避免阻塞 WS IO 线程。</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_关闭连接">15.6.4. 关闭连接</h4>
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">realtime.close();  // 关闭 WS、停止心跳、清理订阅
@@ -667,6 +922,12 @@ String status = realtime.taskCache().getStatus(taskId); // PENDING/EXECUTING/FIN
 client.close();</code></pre>
 </div>
 </div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_动态机型编码">15.7. 动态机型编码</h3>
+<div class="paragraph">
+<p><code>GET /api/open/v1/nav/{robotId}/open-connect</code> 的连接响应新增可选 <code>modelCode</code>，通过 <code>WsTokenResponse.modelCode()</code> 读取。该接口使用camelCase；历史 <code>terminalType</code> 可能为空，请优先使用动态机型编码。</p>
 </div>
 </div>
 </div>
@@ -752,6 +1013,9 @@ ControlNarrationResponse controlResponse = client.robot().controlNarration(
         .segmentMode(SegmentMode.EXPANDED)
         .build());</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p><code>node-pick</code> / <code>self-trigger</code> 插播时可设置 <code>mode("manual")</code>，表示停止原讲解流程并独立插播；不设置或设置为 <code>auto</code> 时，服务端按自动插播处理，插播完成后恢复原流程。</p>
 </div>
 <div class="paragraph">
 <p><code>EXPANDED</code> 形态下，SELF 片段的 <code>selfIndex()</code> 是该节点 <code>selfScripts()</code> 的从 0 开始下标。非 SELF 片段、折叠形态或旧服务端响应可能返回 <code>null</code>，使用前必须同时检查 null 和列表范围。以下代码承接本节上面的 <code>response</code> 和 <code>runtimeResponse</code>：</p>
@@ -1422,7 +1686,7 @@ realtime.onTopic(Topics.CURRENT_POINTCLOUD, data -&gt; {
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>RECONNECTING</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>onDisconnected</code> 原因为 <code>NETWORK_ERROR</code> 或 <code>HEARTBEAT_TIMEOUT</code>（SDK 后台重连中）</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>onDisconnected</code> 原因为 <code>NETWORK_ERROR</code> / <code>HEARTBEAT_TIMEOUT</code> / <code>UNAUTHORIZED</code> / <code>ROBOT_OFFLINE</code>（SDK 后台重连中）</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>KICKED</code></p></td>
@@ -1442,7 +1706,7 @@ realtime.onTopic(Topics.CURRENT_POINTCLOUD, data -&gt; {
 </td>
 <td class="content">
 <div class="paragraph">
-<p><code>onDisconnected(DisconnectReason)</code> 的原因枚举决定状态归一：<code>NETWORK_ERROR</code> / <code>HEARTBEAT_TIMEOUT</code> 归入 <code>RECONNECTING</code>（SDK 会自动重连），其余原因（如重连次数耗尽 <code>EXHAUSTED</code>）归入 <code>DISCONNECTED</code>。</p>
+<p><code>onDisconnected(DisconnectReason)</code> 的原因枚举决定状态归一：<code>NETWORK_ERROR</code> / <code>HEARTBEAT_TIMEOUT</code> / <code>UNAUTHORIZED</code> / <code>ROBOT_OFFLINE</code> 归入 <code>RECONNECTING</code>（SDK 会自动重连），其余原因（如重连次数耗尽 <code>EXHAUSTED</code>）归入 <code>DISCONNECTED</code>。</p>
 </div>
 </td>
 </tr>
@@ -1467,13 +1731,33 @@ realtime.onTopic(Topics.CURRENT_POINTCLOUD, data -&gt; {
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxReconnectAttempts</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">最大重连次数，耗尽后停止重连</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>reconnectInterval</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">5 秒</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">重连间隔时长</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxBackoff</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">60 秒</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">指数退避最大间隔</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>reconnectForever</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">是否在重连次数耗尽后继续重试</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>connectionStableThreshold</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">60 秒</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">连接保持稳定后才清空重连预算</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>maxBinaryMessageSize</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10 MB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">二进制消息接收上限</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>heartbeatInterval</code></p></td>
@@ -1574,7 +1858,7 @@ realtime.onTopic(Topics.CURRENT_POINTCLOUD, data -&gt; {
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-07-07 09:20:00 +0800
+Last updated 2026-08-05 16:23:00 +0800
 </div>
 </div>
 <script src="assets/highlight.js/highlight.min.js"></script>
