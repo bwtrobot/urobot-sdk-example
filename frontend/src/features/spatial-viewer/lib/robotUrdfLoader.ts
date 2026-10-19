@@ -13,6 +13,43 @@ export interface RobotUrdfSource {
 }
 export interface LoadedRobotUrdf { robot: THREE.Object3D; dispose(): void; }
 
+/**
+ * ColladaLoader 在部分 DAE 的多边形属性索引不一致时会生成破面。
+ * 这里把所有属性展开到位置属性的三角顶点上，确保渲染只使用同一套索引。
+ */
+export function normalizeColladaGeometry(geometry: THREE.BufferGeometry) {
+  const position = geometry.getAttribute('position');
+  if (!position) return;
+
+  const source = geometry.index ? geometry.toNonIndexed() : geometry;
+  const vertexCount = source.getAttribute('position').count;
+  const copyAttribute = (name: string, itemSize: number, fallback: number[]) => {
+    const attribute = source.getAttribute(name);
+    const values = new Float32Array(vertexCount * itemSize);
+    for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+      const sourceVertex = attribute && attribute.count > 0 ? Math.min(vertex, attribute.count - 1) : -1;
+      for (let component = 0; component < itemSize; component += 1) {
+        values[vertex * itemSize + component] = sourceVertex >= 0
+          ? attribute.getComponent(sourceVertex, component)
+          : fallback[component] ?? 0;
+      }
+    }
+    source.setAttribute(name, new THREE.BufferAttribute(values, itemSize));
+  };
+
+  // 法线和 UV 均补齐到与三角化后的位置顶点相同的数量。
+  const hadNormals = Boolean(source.getAttribute('normal'));
+  copyAttribute('normal', 3, [0, 1, 0]);
+  if (!hadNormals) {
+    source.computeVertexNormals();
+  }
+  copyAttribute('uv', 2, [0, 0]);
+  if (source !== geometry) {
+    geometry.copy(source);
+  }
+  geometry.setIndex(null);
+}
+
 /** 下载并持有整个机器人资源，调用方移除场景节点后释放。 */
 export function loadRobotUrdf(source: RobotUrdfSource, signal?: AbortSignal): Promise<LoadedRobotUrdf> {
   return new Promise((resolve, reject) => {
@@ -74,13 +111,20 @@ export function loadRobotUrdf(source: RobotUrdfSource, signal?: AbortSignal): Pr
         if (closed) return;
         // 保留完整目录关系，禁止通过同名文件猜测网格或主文件。
         files = Object.fromEntries(Object.entries(files).map(([path, value]) => [normalize(path), value]));
-        if (source.mainPath) main = normalize(source.mainPath);
-        else {
-          const candidates = Object.keys(files).filter(path => /\.urdf$/i.test(path));
+        const candidates = Object.keys(files).filter(path => /\.urdf$/i.test(path));
+        if (source.mainPath) {
+          const requested = normalize(source.mainPath);
+          if (files[requested]) main = requested;
+          else {
+            // mainPath 可能是对象存储完整键；只按目录边界匹配 ZIP 中真实存在的后缀。
+            const matches = candidates.filter(path => requested.endsWith(`/${path}`)).sort((a, b) => b.length - a.length);
+            if (matches.length > 0 && (matches.length === 1 || matches[0].length > matches[1].length)) main = matches[0];
+          }
+        } else {
           if (candidates.length !== 1) throw new Error('ZIP 中缺少唯一 URDF 主文件，请指定 mainPath');
           main = candidates[0];
         }
-        if (!files[main]) throw new Error(`ZIP 中缺少主文件：${main}`);
+        if (!files[main]) throw new Error(`ZIP 中缺少主文件：${source.mainPath ?? main}`);
       }
       const text = new TextDecoder().decode(files ? files[main] : bytes);
       const document = new DOMParser().parseFromString(text, 'application/xml');
@@ -98,7 +142,13 @@ export function loadRobotUrdf(source: RobotUrdfSource, signal?: AbortSignal): Pr
           const index = parts.lastIndexOf(pkg);
           root = index >= 0 ? new URL(parts.slice(0, index + 1).join('/') + '/', base) : new URL('../' + pkg + '/', base);
         }
-        return new URL(rest.join('/'), root).href;
+        const resolved = new URL(rest.join('/'), root).href;
+        if (files && !files[normalize(resolved)]) {
+          // 部分 ZIP 扁平化了 package 目录，优先用归档内实际存在的主文件相邻资源。
+          const adjacent = new URL(rest.join('/'), base).href;
+          if (files[normalize(adjacent)]) return adjacent;
+        }
+        return resolved;
       };
       // 先规范化路径，避免 URDFLoader 对绝对路径重复拼接 workingPath。
       for (const element of document.querySelectorAll('mesh[filename], texture[filename]')) {
@@ -157,6 +207,11 @@ export function loadRobotUrdf(source: RobotUrdfSource, signal?: AbortSignal): Pr
           } else if (extension.endsWith('.dae')) {
             new ColladaLoader(loadingManager).load(url, dae => {
               if (!dae) { complete(undefined, new Error('DAE 资源为空')); return; }
+              dae.scene.traverse((node) => {
+                if (node instanceof THREE.Mesh) normalizeColladaGeometry(node.geometry);
+              });
+              // URDFLoader 挂载网格时会清除 DAE 根旋转；异步替换也需保留 ROS 的 Z-up 坐标系。
+              dae.scene.quaternion.identity();
               const group = new THREE.Group(); group.add(dae.scene); complete(group);
             }, undefined, error => complete(undefined, error));
           } else complete(undefined, new Error(`不支持的机器人网格格式：${url}`));

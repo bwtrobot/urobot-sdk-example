@@ -1,19 +1,40 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { zipSync, strToU8 } from 'fflate';
-import { loadRobotUrdf } from './robotUrdfLoader';
+import { loadRobotUrdf, normalizeColladaGeometry } from './robotUrdfLoader';
 
 const meshLoads = vi.hoisted(() => [] as Array<{url: string; done: (g: THREE.BufferGeometry) => void; fail: (e: Error) => void; manager: THREE.LoadingManager}>);
+const daeLoads = vi.hoisted(() => [] as Array<{url: string; done: (value: { scene: THREE.Group }) => void}>);
 vi.mock('three/examples/jsm/loaders/STLLoader.js', () => ({ STLLoader: class {
   constructor(private manager: THREE.LoadingManager) {}
   load(url: string, done: (g: THREE.BufferGeometry) => void, _: unknown, fail: (e: Error) => void) { meshLoads.push({ url, done, fail, manager: this.manager }); }
+} }));
+vi.mock('three/examples/jsm/loaders/ColladaLoader.js', () => ({ ColladaLoader: class {
+  load(url: string, done: (value: { scene: THREE.Group }) => void) { daeLoads.push({ url, done }); }
 } }));
 const xml = (filename?: string) => `<robot name="测试"><link name="base"><visual><geometry>${filename ? `<mesh filename="${filename}"/>` : '<box size="1 2 3"/>'}</geometry></visual></link></robot>`;
 function respond(body: string | Uint8Array, type = '') {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, headers: new Headers({ 'Content-Type': type }), arrayBuffer: async () => typeof body === 'string' ? strToU8(body).buffer : body.buffer })));
 }
-afterEach(() => { vi.unstubAllGlobals(); meshLoads.length = 0; });
+afterEach(() => { vi.unstubAllGlobals(); meshLoads.length = 0; daeLoads.length = 0; });
 describe('机器人 URDF 资源加载', () => {
+  it('规范化 Collada 网格，让顶点、法线和 UV 使用同一套三角索引', () => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      0, 0, 0, 1, 0, 0, 0, 1, 0,
+    ], 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1], 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0], 2));
+
+    normalizeColladaGeometry(geometry);
+
+    expect(geometry.getAttribute('normal').count).toBe(3);
+    expect(geometry.getAttribute('uv').count).toBe(3);
+    expect(geometry.getAttribute('position').count).toBe(3);
+    expect(geometry.getAttribute('normal').array).toEqual(new Float32Array([
+      0, 0, 1, 0, 0, 1, 0, 0, 1,
+    ]));
+  });
   it('真实解析直接 XML，重复释放仅销毁一次', async () => {
     respond(xml());
     const result = await loadRobotUrdf({ url: 'https://robot.test/a/model.urdf' });
@@ -44,6 +65,22 @@ describe('机器人 URDF 资源加载', () => {
     meshLoads[0].done(new THREE.BufferGeometry());
     (await pending).dispose();
     expect(create).toHaveBeenCalledTimes(1); expect(revoke).toHaveBeenCalledWith('blob:mesh');
+  });
+  it.each(['', 'u2_urdf/'])('存储路径指向的主文件在 ZIP 内 %s 目录时按条目加载', async prefix => {
+    const create = vi.fn(() => 'blob:mesh');
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+    respond(zipSync({
+      [`${prefix}g1_29dof.urdf`]: strToU8(xml('meshes/pelvis.STL')),
+      [`${prefix}meshes/pelvis.STL`]: new Uint8Array([1]),
+    }));
+    const pending = loadRobotUrdf({
+      url: 'https://robot.test/u2_urdf.zip',
+      mainPath: 'bwton/admin/robot-model/model-id/u2_urdf/g1_29dof.urdf',
+    });
+    await vi.waitFor(() => expect(meshLoads).toHaveLength(1));
+    expect(meshLoads[0].url).toBe(`https://robot-archive.invalid/${prefix}meshes/pelvis.STL`);
+    meshLoads[0].done(new THREE.BufferGeometry());
+    (await pending).dispose();
   });
   const invalidArchives: Array<Record<string, Uint8Array>> = [{ 'a.urdf': strToU8(xml()), 'b.urdf': strToU8(xml()) }, { 'readme.txt': strToU8('无模型') }];
   it.each(invalidArchives)('ZIP 主文件缺失或歧义时失败', async files => {
@@ -90,6 +127,21 @@ it('ZIP 包路径按完整目录解析', async () => {
   await vi.waitFor(() => expect(meshLoads).toHaveLength(1));
   expect(meshLoads[0].url).toBe('https://robot-archive.invalid/root/demo/meshes/a.stl');
   meshLoads[0].done(new THREE.BufferGeometry()); (await pending).dispose();
+});
+it('ZIP 根目录的 B2 包引用按实际 meshes 条目解析', async () => {
+  respond(zipSync({
+    'b2_description.urdf': strToU8(xml('package://b2_description/meshes/base_link.dae')),
+    'meshes/base_link.dae': new Uint8Array([1]),
+  }));
+  const pending = loadRobotUrdf({ url: 'https://robot.test/B2_urdf.zip', mainPath: 'storage/B2_urdf/b2_description.urdf' });
+  void pending.catch(() => {});
+  await vi.waitFor(() => expect(daeLoads).toHaveLength(1));
+  expect(daeLoads[0].url).toBe('https://robot-archive.invalid/meshes/base_link.dae');
+  const colladaScene = new THREE.Group();
+  colladaScene.rotation.x = -Math.PI / 2;
+  daeLoads[0].done({ scene: colladaScene });
+  (await pending).dispose();
+  expect(colladaScene.rotation.x).toBeCloseTo(0);
 });
 it('纹理完成后交付并释放纹理与材质', async () => {
   const texture = new THREE.Texture<HTMLImageElement>(); const disposeTexture = vi.spyOn(texture, 'dispose');

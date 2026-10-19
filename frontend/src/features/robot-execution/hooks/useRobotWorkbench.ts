@@ -85,6 +85,12 @@ const renderedRealtimeTopics = new Set(
 
 export function useRobotWorkbench(options: UseRobotWorkbenchOptions = {}) {
   const [robots, setRobots] = useState<RobotSummary[]>([]);
+  const [robotsHasMore, setRobotsHasMore] = useState(false);
+  const [robotsLoadingMore, setRobotsLoadingMore] = useState(false);
+  const [robotsPageError, setRobotsPageError] = useState(false);
+  const nextRobotPageRef = useRef(2);
+  const robotPageBusyRef = useRef(false);
+  const robotsHasMoreRef = useRef(false);
   // 优先从 localStorage 恢复上次选中的机器人
   const [selectedRobotId, setSelectedRobotIdRaw] = useState<string>(
     () => localStorage.getItem(ROBOT_CACHE_KEY) ?? '',
@@ -139,10 +145,19 @@ export function useRobotWorkbench(options: UseRobotWorkbenchOptions = {}) {
 
   useEffect(() => {
     let cancelled = false;
-    void listRobots().then((response) => {
+    void listRobots(1).then((response) => {
       if (cancelled) return;
       const rows = response.data.rows;
       setRobots(rows);
+      const pageNo = response.data.page_no ?? response.data.pageNo ?? 1;
+      const pageSize = response.data.page_size ?? response.data.pageSize ?? 20;
+      const totalPage = response.data.total_page ?? response.data.totalPage;
+      const totalCount = response.data.total_count ?? response.data.totalCount;
+      const hasMore = totalPage != null ? pageNo < totalPage
+        : totalCount != null ? pageNo * pageSize < totalCount : rows.length >= pageSize;
+      nextRobotPageRef.current = pageNo + 1;
+      robotsHasMoreRef.current = hasMore;
+      setRobotsHasMore(hasMore);
       // 优先使用缓存的机器人 ID（需在列表中存在且在线），否则选第一个在线机器人
       setSelectedRobotId((current) => {
         if (current && rows.some((r) => r.id === current && !isRobotOffline(r))) return current;
@@ -154,6 +169,40 @@ export function useRobotWorkbench(options: UseRobotWorkbenchOptions = {}) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const loadMoreRobots = useCallback(async () => {
+    if (robotPageBusyRef.current || !robotsHasMoreRef.current) return;
+    robotPageBusyRef.current = true;
+    setRobotsLoadingMore(true);
+    try {
+      const response = await listRobots(nextRobotPageRef.current);
+      if (response.source === 'mock') {
+        setRobotsPageError(true);
+        return;
+      }
+      setRobotsPageError(false);
+      const pageNo = response.data.page_no ?? response.data.pageNo ?? nextRobotPageRef.current;
+      const pageSize = response.data.page_size ?? response.data.pageSize ?? 20;
+      const totalPage = response.data.total_page ?? response.data.totalPage;
+      const totalCount = response.data.total_count ?? response.data.totalCount;
+      // 保留已加载项的顺序，避免翻页边界上的重复机器人产生重复选项。
+      setRobots(current => {
+        const ids = new Set(current.map(robot => robot.id));
+        return [...current, ...response.data.rows.filter(robot => !ids.has(robot.id))];
+      });
+      const hasMore = totalPage != null ? pageNo < totalPage
+        : totalCount != null ? pageNo * pageSize < totalCount : response.data.rows.length >= pageSize;
+      nextRobotPageRef.current = pageNo + 1;
+      robotsHasMoreRef.current = hasMore;
+      setRobotsHasMore(hasMore);
+    } catch (error) {
+      console.warn('加载下一页机器人失败', error);
+      setRobotsPageError(true);
+    } finally {
+      robotPageBusyRef.current = false;
+      setRobotsLoadingMore(false);
+    }
   }, []);
 
   // 加载机器人关联的地图列表及各地图的版本列表，供「地图切换」面板使用
@@ -709,6 +758,10 @@ export function useRobotWorkbench(options: UseRobotWorkbenchOptions = {}) {
 
   return {
     robots,
+    robotsHasMore,
+    robotsLoadingMore,
+    robotsPageError,
+    loadMoreRobots,
     selectedRobot,
     selectedRobotId,
     setSelectedRobotId,

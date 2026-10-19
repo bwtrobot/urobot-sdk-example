@@ -35,6 +35,33 @@
   text-align: center;
 }
 
+.spatial-robot-error {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 102;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(460px, calc(100% - 32px));
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff1f2;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.spatial-robot-error button {
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #991b1b;
+  cursor: pointer;
+}
+
 .spatial-toolbar {
   position: absolute;
   top: 16px;

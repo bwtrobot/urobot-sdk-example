@@ -84,6 +84,44 @@ describe('useRobotWorkbench', () => {
     vi.restoreAllMocks();
   });
 
+  it('滚动加载下一页时追加机器人并在末页停止', async () => {
+    const { listRobots } = await import('../../../services/api/robotApi');
+    const { getMapEditions } = await import('../../../services/api/mapApi');
+    vi.mocked(getMapEditions).mockResolvedValue({ data: [], source: 'real' });
+    const nextRobot = { id: 'robot-next', name: '下一页机器人', status: '空闲' };
+    vi.mocked(listRobots)
+      .mockResolvedValueOnce({ data: { rows: [mockRobots[0]], total_count: 2, page_no: 1, page_size: 1, total_page: 2 }, source: 'real' })
+      .mockResolvedValueOnce({ data: { rows: [nextRobot], total_count: 2, page_no: 2, page_size: 1, total_page: 2 }, source: 'real' });
+    const { result } = renderHook(() => useRobotWorkbench());
+    await waitFor(() => expect(result.current.robotsHasMore).toBe(true));
+
+    await act(async () => { await result.current.loadMoreRobots(); });
+
+    expect(listRobots).toHaveBeenNthCalledWith(2, 2);
+    expect(result.current.robots.map(robot => robot.id)).toEqual([mockRobots[0].id, nextRobot.id]);
+    expect(result.current.robotsHasMore).toBe(false);
+  });
+
+  it('下一页请求失败后保留页码以便重试', async () => {
+    const { listRobots } = await import('../../../services/api/robotApi');
+    const { getMapEditions } = await import('../../../services/api/mapApi');
+    vi.mocked(getMapEditions).mockResolvedValue({ data: [], source: 'real' });
+    vi.mocked(listRobots)
+      .mockResolvedValueOnce({ data: { rows: [mockRobots[0]], page_no: 1, total_page: 2 }, source: 'real' })
+      .mockResolvedValueOnce({ data: { rows: [], page_no: 1, total_page: 0 }, source: 'mock' })
+      .mockResolvedValueOnce({ data: { rows: [{ id: 'second', name: '第二页' }], page_no: 2, total_page: 2 }, source: 'real' });
+    const { result } = renderHook(() => useRobotWorkbench());
+    await waitFor(() => expect(result.current.robotsHasMore).toBe(true));
+
+    await act(async () => { await result.current.loadMoreRobots(); });
+    expect(result.current.robotsPageError).toBe(true);
+    expect(result.current.robotsHasMore).toBe(true);
+
+    await act(async () => { await result.current.loadMoreRobots(); });
+    expect(listRobots).toHaveBeenNthCalledWith(3, 2);
+    expect(result.current.robotsPageError).toBe(false);
+  });
+
   it('加载地图版本列表时允许单个地图失败并保留其他地图版本', async () => {
     const { getMapEditions } = await import('../../../services/api/mapApi');
     const availableEdition: MapEdition = { ...mockEdition, id: 'edition-ok', mapId: mockMaps[0].id };

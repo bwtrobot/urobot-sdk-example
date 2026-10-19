@@ -101,6 +101,19 @@ describe('robotApi', () => {
     expect(fallback.data.total_count).toBe(3);
   });
 
+  it('按页请求机器人列表', async () => {
+    http.defaults.adapter = vi.fn(async (config) => ({
+      data: { result: { rows: [], total_count: 53, page_no: 2, page_size: 20, total_page: 3 } },
+      status: 200, statusText: 'OK', headers: {}, config,
+    })) as AxiosAdapter;
+
+    await listRobots(2);
+
+    expect(http.defaults.adapter).toHaveBeenCalledWith(expect.objectContaining({
+      url: '/robot/page', params: { pageNo: 2, pageSize: 20 },
+    }));
+  });
+
   it('gets runtime from a rows result and from a direct result', async () => {
     http.defaults.adapter = vi.fn(async (config) => ({
       data: {

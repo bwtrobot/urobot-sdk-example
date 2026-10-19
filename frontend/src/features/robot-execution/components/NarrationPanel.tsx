@@ -59,13 +59,13 @@ export function NarrationPanel({
     });
   }
 
-  function toggleNode(nodeId: string) {
+  function toggleNode(nodeKey: string) {
     setExpandedNodeIds((current) => {
       const next = new Set(current);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
+      if (next.has(nodeKey)) {
+        next.delete(nodeKey);
       } else {
-        next.add(nodeId);
+        next.add(nodeKey);
       }
       return next;
     });
@@ -135,7 +135,9 @@ export function NarrationPanel({
           </div>
 
           <ul className="narration-node-list">
-            {(selectedProcess?.nodes ?? []).map((node) => {
+            {(selectedProcess?.nodes ?? []).map((node, index) => {
+              // 上游节点 id 可能为空，位置后缀保证列表 key 和展开状态互不串联。
+              const nodeKey = `${node.id || node.uuid || node.navNodeId || 'node'}:${index}`;
               const active = currentRuntime?.currentNodeId === node.id || currentRuntime?.currentNodeId === node.navNodeId;
               const segmentStatus = getNarrationNodeStatus(node.id, currentRuntime?.segments);
               const status = segmentMode === 'collapsed'
@@ -143,15 +145,15 @@ export function NarrationPanel({
                 : undefined;
               const behaviors = buildNarrationNodeBehaviors(node, currentRuntime?.segments, segmentMode);
               const stopoverLabel = node.stopover === false ? '不停留' : '停留';
-              const expanded = expandedNodeIds.has(node.id);
+              const expanded = expandedNodeIds.has(nodeKey);
               return (
-                <li key={node.id}>
+                <li key={nodeKey}>
                   <div className="narration-node-row">
                     <button
                       type="button"
                       className="narration-node-toggle"
                       disabled={behaviors.length === 0}
-                      onClick={() => toggleNode(node.id)}
+                      onClick={() => toggleNode(nodeKey)}
                       title={expanded ? '收起行为' : '展开行为'}
                     >
                       {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

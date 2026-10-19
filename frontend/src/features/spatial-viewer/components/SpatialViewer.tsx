@@ -51,6 +51,7 @@ export const SpatialViewer = forwardRef<SpatialViewerHandle, SpatialViewerProps>
     getAdapter: () => adapterRef.current,
   }));
   const [viewerError, setViewerError] = useState<string | null>(null);
+  const [robotModelError, setRobotModelError] = useState<string | null>(null);
   const [viewerReady, setViewerReady] = useState(false);
 
   useEffect(() => {
@@ -86,7 +87,16 @@ export const SpatialViewer = forwardRef<SpatialViewerHandle, SpatialViewerProps>
   useEffect(() => {
     if (!viewerReady) return;
     adapterRef.current.loadRobotModel(robot);
+    setRobotModelError(null);
   }, [robot, viewerReady]);
+
+  useEffect(() => {
+    if (!viewerReady) return;
+    const syncError = () => setRobotModelError(adapterRef.current.getRobotModelError());
+    syncError();
+    const timer = window.setInterval(syncError, 250);
+    return () => window.clearInterval(timer);
+  }, [viewerReady]);
 
   useEffect(() => {
     if (!viewerReady) return;
@@ -119,6 +129,14 @@ export const SpatialViewer = forwardRef<SpatialViewerHandle, SpatialViewerProps>
       {viewerError ? (
         <div className="spatial-viewer-fallback" role="status">
           3D 视图不可用：{viewerError}
+        </div>
+      ) : null}
+      {robotModelError ? (
+        <div className="spatial-robot-error" role="alert">
+          <span>机器人模型加载失败：{robotModelError}</span>
+          <button type="button" onClick={() => { adapterRef.current.retryRobotModel(); setRobotModelError(null); }}>
+            重试
+          </button>
         </div>
       ) : null}
 

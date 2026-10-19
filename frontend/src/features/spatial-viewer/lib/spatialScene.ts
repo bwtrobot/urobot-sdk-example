@@ -6,6 +6,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import URDFLoader from 'urdf-loader';
+import { getRobotModel } from '../../../services/api/robotApi';
 import type {
   MapEdition,
   NavigationPath,
@@ -26,6 +27,7 @@ import {
 import type { LayerVisibility } from '../components/LayerDropdown';
 import { createRobotFocusViewpoint } from './spatialCamera';
 import { PointCloud2Parser, applyRobotToThree, type PointCloud2Message } from './pointCloud2Parser';
+import { loadRobotUrdf, normalizeColladaGeometry, type LoadedRobotUrdf } from './robotUrdfLoader';
 
 export interface RenderSettings {
   pointSize: 'small' | 'medium' | 'large';
@@ -44,6 +46,8 @@ export interface SpatialSceneAdapter {
   loadEdition(edition: MapEdition | null): Promise<void>;
   loadRobotModel(robot: RobotSummary | null): void;
   updateRobotRuntime(runtime: RobotRuntime | null): void;
+  retryRobotModel(): void;
+  getRobotModelError(): string | null;
   setNavigationData(navPaths: NavigationPath[], topoPaths: TopologyPath[]): void;
   setActivePathData(data: ActivePathData | null): void;
   setLayerVisibility(layers: LayerVisibility): void;
@@ -100,9 +104,15 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
   private realtimePointCloud: THREE.Points | null = null;
   // 当前已加载的机型标识，避免重复加载
   private loadedRobotModelKey: string | null = null;
+  private selectedRobotId: string | null = null;
   private latestRuntime: RobotRuntime | null = null;
   private hasFocusedRobot = false;
   private robotModelPending = false;
+  private robotModelGeneration = 0;
+  private robotModelAbort: AbortController | null = null;
+  private loadedRobotAsset: LoadedRobotUrdf | null = null;
+  private currentRobot: RobotSummary | null = null;
+  private robotModelError: string | null = null;
 
   mount(container: HTMLDivElement) {
     this.dispose();
@@ -163,10 +173,28 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
     this.focusRobotOnce();
   }
 
+  retryRobotModel() {
+    if (!this.currentRobot) return;
+    this.loadedRobotModelKey = null;
+    this.loadRobotModel(this.currentRobot);
+  }
+
+  getRobotModelError() {
+    return this.robotModelError;
+  }
+
   private applyRobotRuntimePose(runtime: RobotRuntime | null) {
     const pose = runtime?.ros_odom?.pose;
-    this.robot.visible = Boolean(pose);
-    if (!pose) return;
+    this.robot.visible = this.selectedRobotId !== null && !this.robotModelPending;
+    if (!pose) {
+      // 无定位数据时以地图原点预览，并让模型最低点落在地面上，避免 URDF 原点使机身陷入地图。
+      this.robot.position.set(0, 0, 0);
+      this.robot.quaternion.identity();
+      const bounds = new THREE.Box3().setFromObject(this.robot);
+      if (!bounds.isEmpty()) this.robot.position.y = -bounds.min.y;
+      this.ssp?.render();
+      return;
+    }
 
     // ROS 坐标 → Three.js 坐标
     const threePos = rosPositionToThree(pose.position);
@@ -272,6 +300,10 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
   }
 
   dispose() {
+    this.robotModelGeneration++;
+    this.robotModelAbort?.abort();
+    this.robotModelAbort = null;
+    this.releaseRobotAsset();
     Object.values(this.groups).forEach((group) => this.clearGroup(group));
     this.clearGroup(this.robot);
 
@@ -282,6 +314,9 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
     }
     this.cpsPlugin = null;
     this.loadedRobotModelKey = null;
+    this.currentRobot = null;
+    this.robotModelError = null;
+    this.selectedRobotId = null;
     this.latestRuntime = null;
     this.hasFocusedRobot = false;
     this.robotModelPending = false;
@@ -337,6 +372,7 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
 
   /** 构建默认的简易机器人 Mesh（无 URDF 时使用） */
   private buildFallbackRobotMesh() {
+    this.releaseRobotAsset();
     this.clearGroup(this.robot);
 
     const body = new THREE.Mesh(
@@ -356,26 +392,81 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
     this.robot.visible = false;
   }
 
-  /**
-   * 根据机器人的 terminal_type_value / terminal_type 判定机型并加载对应 URDF 模型
-   * CANINE（四足）类型 → b2_description（机器狗）
-   * HUMAN（人形）类型 → g1_description（23 自由度人形）
-   * 其他/未知 → 保留默认简易 Mesh
-   */
+  /** 优先按动态机型编码加载资源；旧数据仍按终端类型选择本地模型。 */
   loadRobotModel(robot: RobotSummary | null) {
+    this.currentRobot = robot;
+    this.robotModelError = null;
+    if (this.selectedRobotId !== (robot?.id ?? null)) {
+      this.selectedRobotId = robot?.id ?? null;
+      this.latestRuntime = null;
+    }
+    const modelCode = robot?.model_code?.trim() ? robot.model_code : robot?.modelCode?.trim() ? robot.modelCode : null;
     const robotModelType = this.resolveRobotModelType(robot);
-    const robotModelKey = robotModelType?.key ?? null;
+    const robotModelKey = modelCode ? `code:${modelCode}` : robotModelType?.key ?? null;
     // 同一机型不重复加载
     if (robotModelKey === this.loadedRobotModelKey) {
+      this.applyRobotRuntimePose(this.latestRuntime);
       this.focusRobotOnce();
       return;
     }
+    this.robotModelGeneration++;
+    this.robotModelAbort?.abort();
+    this.robotModelAbort = null;
     this.loadedRobotModelKey = robotModelKey;
     this.hasFocusedRobot = false;
+
+    if (modelCode) {
+      this.buildFallbackRobotMesh();
+      this.robotModelPending = true;
+      // 资源未完整加载前不展示占位模型，避免用户误以为 URDF 已经渲染完成。
+      this.robot.visible = false;
+      const generation = this.robotModelGeneration;
+      const controller = new AbortController();
+      this.robotModelAbort = controller;
+      // 查询与资源下载跨越两个异步边界，代次检查防止旧机型覆盖新场景。
+      void (async () => {
+        try {
+          const response = await getRobotModel(modelCode);
+          if (controller.signal.aborted || generation !== this.robotModelGeneration) return;
+          const file = response.source === 'real' ? response.data.urdf : null;
+          if (!file?.url) throw new Error('机型 URDF 资源不可用');
+          const asset = await loadRobotUrdf({
+            url: file.url,
+            mainPath: response.data.urdfMainPath,
+            fileName: file.fileName,
+            contentType: file.contentType,
+          }, controller.signal);
+          if (controller.signal.aborted || generation !== this.robotModelGeneration) {
+            asset.dispose();
+            return;
+          }
+          this.clearGroup(this.robot);
+          this.loadedRobotAsset = asset;
+          asset.robot.rotation.x = -Math.PI / 2;
+          this.robot.add(asset.robot);
+          this.robotModelPending = false;
+          this.robotModelError = null;
+          this.applyRobotRuntimePose(this.latestRuntime);
+          this.focusRobotOnce();
+          this.ssp?.render();
+        } catch (error) {
+          if (controller.signal.aborted || generation !== this.robotModelGeneration) return;
+          console.warn('[URDF] 机型资源加载失败，使用默认模型', error);
+          this.robotModelPending = false;
+          this.robotModelError = error instanceof Error ? error.message : '机器人 URDF 资源加载失败';
+          this.loadedRobotModelKey = null;
+          this.buildFallbackRobotMesh();
+          this.applyRobotRuntimePose(this.latestRuntime);
+          this.focusRobotOnce();
+        }
+      })();
+      return;
+    }
 
     // 无法识别机型时使用默认 Mesh
     if (!robotModelType) {
       this.robotModelPending = false;
+            this.robotModelError = null;
       this.buildFallbackRobotMesh();
       this.applyRobotRuntimePose(this.latestRuntime);
       this.focusRobotOnce();
@@ -394,12 +485,17 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
 
     // 异步加载 URDF 模型
     this.robotModelPending = true;
+    this.robot.visible = false;
     const loader = new URDFLoader();
     loader.loadMeshCb = this.createUrdfMeshLoader();
     loader.packages = () => urdfConfig.packagePath;
+    const generation = this.robotModelGeneration;
     loader.loadAsync(urdfConfig.urdfUrl).then((urdfRobot) => {
       // 确保加载完成时机型未切换
-      if (this.loadedRobotModelKey !== robotModelKey) return;
+      if (generation !== this.robotModelGeneration) {
+        this.disposeObject(urdfRobot);
+        return;
+      }
       this.robotModelPending = false;
       this.clearGroup(this.robot);
       // URDF 坐标系为 Z-up（ROS），Three.js/SoonSpace 为 Y-up，需绕 X 轴旋转 -90°
@@ -421,13 +517,21 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
       this.ssp?.render();
     }).catch((err) => {
       console.warn('[URDF] 加载失败，使用默认模型', err);
-      if (this.loadedRobotModelKey === robotModelKey) {
+      if (generation === this.robotModelGeneration) {
         this.robotModelPending = false;
+        this.robotModelError = err instanceof Error ? err.message : '机器人 URDF 资源加载失败';
         this.buildFallbackRobotMesh();
         this.applyRobotRuntimePose(this.latestRuntime);
         this.focusRobotOnce();
       }
     });
+  }
+
+  private releaseRobotAsset() {
+    if (!this.loadedRobotAsset) return;
+    this.loadedRobotAsset.robot.removeFromParent();
+    this.loadedRobotAsset.dispose();
+    this.loadedRobotAsset = null;
   }
 
   /**
@@ -491,7 +595,14 @@ class SoonSpaceSceneAdapter implements SpatialSceneAdapter {
       done: (mesh: THREE.Object3D, err?: Error) => void,
     ) => {
       if (/\.dae$/i.test(path)) {
-        new ColladaLoader(manager).load(path, (dae) => { if (dae?.scene) done(dae.scene); });
+        new ColladaLoader(manager).load(path, (dae) => {
+          if (dae?.scene) {
+            dae.scene.traverse((node) => {
+              if (node instanceof THREE.Mesh) normalizeColladaGeometry(node.geometry);
+            });
+            done(dae.scene);
+          }
+        });
       } else if (/\.stl$/i.test(path)) {
         new STLLoader(manager).load(path, (geom) => done(new THREE.Mesh(geom)));
       } else {

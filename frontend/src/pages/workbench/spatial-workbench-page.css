@@ -22,13 +22,77 @@
   color: #64748b;
 }
 
-.workbench-header select {
-  min-width: 220px;
-  min-height: 36px;
+.robot-picker {
+  position: relative;
+  width: min(320px, 48vw);
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.robot-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 0 10px;
+  border-radius: 6px;
+  padding: 6px 10px;
   background: #fff;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+}
+
+.robot-picker-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.robot-picker-trigger svg { flex-shrink: 0; }
+
+.robot-picker-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 100%;
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 20px #18212f24;
+}
+
+.robot-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 0;
+  background: #fff;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+}
+
+.robot-picker-option:hover:not(:disabled),
+.robot-picker-option[aria-selected='true'] { background: #e8f3f1; }
+.robot-picker-option:disabled { color: #64748b; cursor: not-allowed; }
+.robot-picker-option span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.robot-picker-option small { flex-shrink: 0; color: #64748b; }
+.robot-picker-status { padding: 8px 10px; color: #64748b; font-size: 12px; text-align: center; }
+.robot-picker-retry { width: 100%; padding: 9px; border: 0; background: #fff; color: #0f766e; cursor: pointer; }
+.robot-picker-retry:hover { background: #e8f3f1; }
+
+@media (max-width: 600px) {
+  .workbench-header { align-items: flex-start; flex-direction: column; }
+  .robot-picker { width: 100%; }
 }
 
 .workbench-grid {

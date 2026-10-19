@@ -15,7 +15,7 @@ import { SpatialViewer, type SpatialViewerHandle } from '../../features/spatial-
 import type { ActivePathData, RenderSettings } from '../../features/spatial-viewer/lib/spatialScene';
 import type { PointCloud2Message } from '../../features/spatial-viewer/lib/pointCloud2Parser';
 import { ApiDebugDrawer } from '../../shared/components/ApiDebugDrawer';
-import { getRobotStatusLabel, isRobotOffline } from '../../shared/utils/robotStatus';
+import { RobotPicker } from './RobotPicker';
 import './spatial-workbench-page.css';
 
 const defaultLayers: LayerVisibility = {
@@ -120,17 +120,10 @@ export function SpatialWorkbenchPage() {
           <h1>uRobot SDK Web Example</h1>
           <p>空间执行工作台</p>
         </div>
-        <select value={workbench.selectedRobotId} onChange={(event) => workbench.setSelectedRobotId(event.target.value)}>
-          {workbench.robots.map((robot) => {
-            const offline = isRobotOffline(robot);
-            return (
-              <option key={robot.id} value={robot.id} disabled={offline}>
-                {robot.name} · {getRobotStatusLabel(robot)}
-                {offline ? '（不可选）' : ''}
-              </option>
-            );
-          })}
-        </select>
+        <RobotPicker robots={workbench.robots} selectedRobotId={workbench.selectedRobotId}
+          onSelect={workbench.setSelectedRobotId} hasMore={workbench.robotsHasMore}
+          loadingMore={workbench.robotsLoadingMore} loadError={workbench.robotsPageError}
+          onLoadMore={() => { void workbench.loadMoreRobots(); }} />
       </header>
 
       <div className="workbench-grid">

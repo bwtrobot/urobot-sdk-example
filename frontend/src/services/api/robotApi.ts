@@ -94,11 +94,12 @@ export function buildCommandPayload(
   };
 }
 
-export async function listRobots() {
+export async function listRobots(pageNo = 1) {
   return apiRequest<PageResult<RobotSummary>>({
     method: 'GET',
     url: '/robot/page',
-    fallbackData: buildPageResult(mockRobots),
+    params: { pageNo, pageSize: 20 },
+    fallbackData: pageNo === 1 ? buildPageResult(mockRobots) : buildPageResult([]),
   });
 }
 
